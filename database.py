@@ -146,6 +146,15 @@ class DatabaseManager:
             row = cursor.fetchone()
             return json.loads(row[0]) if row else None
 
+    def get_all_embeddings(self) -> list[tuple[int, list[float]]]:
+        """Retrieve all embeddings stored in the database."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT video_id, embedding FROM video_embedding")
+            rows = cursor.fetchall()
+        return [(row[0], json.loads(row[1])) for row in rows]
+
+
     def search_by_embedding(self, embedding: list[float], top_n: int = 5) -> list[dict]:
         """Return videos most similar to the given embedding."""
         with sqlite3.connect(self.db_path) as conn:
