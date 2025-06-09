@@ -78,6 +78,17 @@ class DatabaseManager:
             )
             conn.commit()
 
+    def get_transcript(self, video_id: int) -> str | None:
+        """Retrieve transcript text for a video."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT content FROM transcript WHERE video_id = ?",
+                (video_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     def store_summary(self, video_id: int, content: str) -> None:
         """
         Store video summary in database and extract quote if present.
