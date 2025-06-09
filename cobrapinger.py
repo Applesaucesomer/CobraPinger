@@ -15,12 +15,19 @@ import numpy as np
 from embedding_index import load_index, add_embedding, find_similar, build_advisor_prompt
 from googleapiclient.discovery import build
 from models.AdvisorNotes import AdvisorNotes
+import joblib
+from sklearn.cluster import MiniBatchKMeans
+import faiss
 
 
 CONFIG_FILE = "config.json"
 
 FAISS_INDEX = None
 FAISS_IDS = []
+KMEANS_MODEL = None
+CLUSTER_TAG_MAP = {}
+TAG_INDEX = None
+APPROVED_TAGS = []
 
 def sanitize_filename(filename):
     """Sanitize the filename by removing or replacing invalid characters."""
@@ -60,6 +67,30 @@ def save_last_video_data(youtuber_name, video_data):
     last_video_file = f"{youtuber_name}_last_video_data.json"
     with open(last_video_file, "w") as file:
         json.dump(video_data, file, indent=4)
+
+def load_tag_resources(client):
+    """Load clustering model and build approved tag index."""
+    global KMEANS_MODEL, CLUSTER_TAG_MAP, TAG_INDEX, APPROVED_TAGS
+    if os.path.exists("kmeans_tags.pkl"):
+        KMEANS_MODEL = joblib.load("kmeans_tags.pkl")
+    if os.path.exists("cluster_tag_map.json"):
+        with open("cluster_tag_map.json", "r") as f:
+            CLUSTER_TAG_MAP = json.load(f)
+    APPROVED_TAGS = sorted({t for lst in CLUSTER_TAG_MAP.values() for t in lst})
+    if APPROVED_TAGS:
+        vectors = []
+        for tag in APPROVED_TAGS:
+            vec = generate_embedding(tag, client)
+            if vec:
+                vectors.append(vec)
+        if vectors:
+            idx = faiss.IndexFlatL2(len(vectors[0]))
+            idx.add(np.array(vectors, dtype="float32"))
+            TAG_INDEX = idx
+        else:
+            TAG_INDEX = faiss.IndexFlatL2(0)
+    else:
+        TAG_INDEX = faiss.IndexFlatL2(0)
 
 def save_transcript_to_file(transcript, youtuber_name, video_title, video_published):
     """Save the transcript to a text file in the YouTuber's directory."""
@@ -210,6 +241,62 @@ def generate_advisor_notes(transcript: str, summaries: list[str], client, contex
         log(f"Error generating advisor notes: {e}")
         return []
 
+def suggest_tags(transcript: str, embedding: list[float], db: DatabaseManager, client) -> list[str]:
+    """Generate tag suggestions using similar videos as context."""
+    similar = find_similar(FAISS_INDEX, FAISS_IDS, embedding, k=5)
+    similar_ids = [sid for sid, _ in similar]
+    existing = db.get_tags_for_videos(similar_ids)
+    flat_tags = []
+    for tag_str in existing:
+        for t in tag_str.split(','):
+            t = t.strip().lower()
+            if t:
+                flat_tags.append(t)
+    flat_tags = list(dict.fromkeys(flat_tags))
+    prompt = (
+        f"Transcript:\n\"\"\"{transcript}\"\"\"\n\n"
+        f"Here are tags from 5 similar videos:\n{', '.join(flat_tags)}\n\n"
+        "Suggest up to 10 concise, standardized tags for this video."
+    )
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+        )
+        tag_line = resp.choices[0].message.content.strip()
+        return [t.strip().lower() for t in tag_line.split(',') if t.strip()]
+    except Exception as e:
+        log(f"Failed to generate tags: {e}")
+        return []
+
+def resolve_tags(tags: list[str], client, threshold: float = 0.3) -> list[str]:
+    """Map tags to approved vocabulary using embeddings."""
+    final = []
+    for tag in tags:
+        vec = generate_embedding(tag, client)
+        if TAG_INDEX and TAG_INDEX.ntotal > 0 and vec is not None:
+            q = np.array(vec, dtype="float32").reshape(1, -1)
+            D, I = TAG_INDEX.search(q, 1)
+            if D[0][0] < threshold:
+                final.append(APPROVED_TAGS[I[0][0]])
+            else:
+                final.append(tag)
+        else:
+            final.append(tag)
+    deduped = []
+    for t in final:
+        t = t.lower().strip()
+        if t and t not in deduped:
+            deduped.append(t)
+    return deduped
+
+def cluster_base_tags(vec: list[float]) -> list[str]:
+    if KMEANS_MODEL is None or not CLUSTER_TAG_MAP:
+        return []
+    cid = int(KMEANS_MODEL.predict(np.array(vec, dtype="float32").reshape(1, -1))[0])
+    return CLUSTER_TAG_MAP.get(str(cid), [])
+
 def run_program_once(config, client):
     """Run the program once."""
     db = DatabaseManager(config['db_path'])
@@ -281,6 +368,15 @@ def run_program_once(config, client):
                     if advisor_notes:
                         db.store_advisor_notes(db_video_id, advisor_notes)
                         log(f"Stored {len(advisor_notes)} advisor notes")
+
+                    # Generate and store tags
+                    if embedding:
+                        rag_tags = suggest_tags(transcript, embedding, db, client)
+                        base_tags = cluster_base_tags(embedding)
+                        final_tags = resolve_tags(rag_tags + base_tags, client)
+                        if final_tags:
+                            db.update_transcript_tags(db_video_id, final_tags)
+                            log(f"Stored {len(final_tags)} tags")
                 else:
                     summary = "No transcript found."
 
@@ -917,6 +1013,77 @@ def backfill_missing_embeddings(config, client):
         else:
             log("Failed to generate embedding.")
 
+def build_initial_cluster_map(config, client, n_clusters: int = 30):
+    """Train kmeans model and generate a draft cluster tag map."""
+    db = DatabaseManager(config['db_path'])
+    rows = db.get_all_embeddings()
+    if not rows:
+        log("No embeddings found")
+        return
+
+    embeddings = np.array([json.loads(r[1]) for r in rows], dtype='float32')
+    kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42, batch_size=500)
+    kmeans.fit(embeddings)
+    joblib.dump(kmeans, "kmeans_tags.pkl")
+    log("Saved kmeans model to kmeans_tags.pkl")
+
+    cluster_samples = {i: [] for i in range(n_clusters)}
+    ids = [r[0] for r in rows]
+    for vid, vec in zip(ids, embeddings):
+        cid = int(kmeans.predict(vec.reshape(1, -1))[0])
+        if len(cluster_samples[cid]) < 5:
+            details = db.get_video_details(vid)
+            if details and details.get("transcript"):
+                cluster_samples[cid].append(details["transcript"][:500])
+
+    draft = {}
+    for cid, texts in cluster_samples.items():
+        if not texts:
+            continue
+        joined = "\n".join(texts)
+        prompt = f"Suggest 5-10 concise tags that best represent these transcripts:\n{joined}"
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=100,
+            )
+            tag_line = resp.choices[0].message.content.strip()
+            draft[str(cid)] = [t.strip().lower() for t in tag_line.split(',') if t.strip()]
+        except Exception as e:
+            log(f"Error generating tags for cluster {cid}: {e}")
+
+    with open("cluster_tags_draft.json", "w") as f:
+        json.dump(draft, f, indent=2)
+    log("Wrote draft tag map to cluster_tags_draft.json")
+
+def retag_existing_videos(config, client):
+    """Regenerate tags for all videos using the latest taxonomy."""
+    db = DatabaseManager(config['db_path'])
+    videos = db.get_all_videos_with_transcripts()
+    if not videos:
+        log("No videos found with transcripts")
+        return
+
+    global FAISS_INDEX, FAISS_IDS
+    for video in videos:
+        log(f"Retagging {video['title']}")
+        embedding = db.get_embedding(video['id'])
+        if embedding is None:
+            embedding = generate_embedding(video['transcript'], client)
+            if embedding:
+                db.store_embedding(video['id'], embedding)
+        if embedding:
+            if video['id'] not in FAISS_IDS:
+                FAISS_INDEX = add_embedding(FAISS_INDEX, FAISS_IDS, video['id'], embedding)
+            rag_tags = suggest_tags(video['transcript'], embedding, db, client)
+            base_tags = cluster_base_tags(embedding)
+            final_tags = resolve_tags(rag_tags + base_tags, client)
+            if final_tags:
+                db.update_transcript_tags(video['id'], final_tags)
+                log(f"Stored {len(final_tags)} tags")
+    log("Finished retagging videos")
+
 def ask_question(config, client):
     """Allow the user to ask a question about the video library."""
     db = DatabaseManager(config['db_path'])
@@ -1011,7 +1178,13 @@ if __name__ == "__main__":
     client = OpenAI(api_key=config['openai_api_key'])
     db = DatabaseManager(config['db_path'])
     FAISS_INDEX, FAISS_IDS = load_index(db)
-    if len(sys.argv) > 1 and sys.argv[1] == "--auto":
+    load_tag_resources(client)
+    args = sys.argv[1:]
+    if "--auto" in args:
         run_program_continuously(config, client)
+    elif "--build-cluster-map" in args:
+        build_initial_cluster_map(config, client)
+    elif "--retag-existing" in args:
+        retag_existing_videos(config, client)
     else:
         show_menu()

@@ -78,6 +78,29 @@ class DatabaseManager:
             )
             conn.commit()
 
+    def update_transcript_tags(self, video_id: int, tags: list[str]) -> None:
+        """Update the tags column for a transcript."""
+        tag_str = ",".join(sorted(set(t.lower().strip() for t in tags)))
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE transcript SET tags = ? WHERE video_id = ?",
+                (tag_str, video_id),
+            )
+            conn.commit()
+
+    def get_tags_for_videos(self, video_ids: list[int]) -> list[str]:
+        """Fetch tag strings for the given videos."""
+        if not video_ids:
+            return []
+        placeholders = ",".join("?" for _ in video_ids)
+        query = f"SELECT tags FROM transcript WHERE video_id IN ({placeholders})"
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, video_ids)
+            rows = cursor.fetchall()
+        return [row[0] for row in rows if row and row[0]]
+
     def store_summary(self, video_id: int, content: str) -> None:
         """
         Store video summary in database and extract quote if present.
