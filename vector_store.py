@@ -10,7 +10,7 @@ class VectorStoreManager:
     def store_embedding(self, video_id: int, embedding: List[float]) -> None:
         """Store a single embedding in the vector store."""
         try:
-            self.client.beta.vector_stores.vectors.upsert(
+            self.client.vector_stores.vectors.upsert(
                 vector_store_id=self.vector_store_id,
                 vectors=[{"id": str(video_id), "values": embedding}]
             )
@@ -20,7 +20,7 @@ class VectorStoreManager:
     def query_embeddings(self, embedding: List[float], top_n: int = 5) -> List[int]:
         """Return IDs of the most similar vectors."""
         try:
-            resp = self.client.beta.vector_stores.query(
+            resp = self.client.vector_stores.query(
                 vector_store_id=self.vector_store_id,
                 embedding=embedding,
                 top_k=top_n
