@@ -9,8 +9,10 @@ CobraPinger is a totally dank command line utility for monitoring youtubers you 
 
 ## Dependencies
 
-Install Python requirements from `requirements.txt`. In addition, `ffmpeg` must
-be installed for Whisper transcription (e.g. `apt install ffmpeg`).
+Install Python requirements from `requirements.txt`. This includes the
+`openai-whisper` and `pytube` packages used for the transcript fallback.
+In addition, `ffmpeg` must be installed for Whisper transcription
+(e.g. `apt install ffmpeg`).
 
 That's most definitely what's up!
 
