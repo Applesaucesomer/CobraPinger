@@ -78,6 +78,45 @@ class DatabaseManager:
             )
             conn.commit()
 
+    def update_transcript_tags(self, video_id: int, tags: list[str]) -> None:
+        """Update the tags column for a transcript."""
+        tag_str = ",".join(sorted(set(t.lower().strip() for t in tags)))
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "UPDATE transcript SET tags = ? WHERE video_id = ?",
+                    (tag_str, video_id),
+                )
+            except sqlite3.OperationalError as e:
+                if "no such column" in str(e).lower():
+                    cursor.execute("ALTER TABLE transcript ADD COLUMN tags TEXT")
+                    cursor.execute(
+                        "UPDATE transcript SET tags = ? WHERE video_id = ?",
+                        (tag_str, video_id),
+                    )
+                else:
+                    raise
+            conn.commit()
+
+    def get_tags_for_videos(self, video_ids: list[int]) -> list[str]:
+        """Fetch tag strings for the given videos."""
+        if not video_ids:
+            return []
+        placeholders = ",".join("?" for _ in video_ids)
+        query = f"SELECT tags FROM transcript WHERE video_id IN ({placeholders})"
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(query, video_ids)
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                if "no such column" in str(e).lower():
+                    return []
+                else:
+                    raise
+        return [row[0] for row in rows if row and row[0]]
+
     def store_summary(self, video_id: int, content: str) -> None:
         """
         Store video summary in database and extract quote if present.
@@ -429,6 +468,52 @@ class DatabaseManager:
                 'pages': (total_count + per_page - 1) // per_page
             }
 
+    def get_videos_by_tag(self, tag: str, page: int = 1, per_page: int = 10):
+        """Get paginated list of videos for a specific tag."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            pattern = f"%,{tag.lower().strip()},%"
+            where_clause = "(',' || lower(t.tags) || ',') LIKE ?"
+            try:
+                cursor.execute(
+                    f"SELECT COUNT(*) FROM video v JOIN transcript t ON v.id = t.video_id WHERE {where_clause}",
+                    (pattern,)
+                )
+                total_count = cursor.fetchone()[0]
+
+                offset = (page - 1) * per_page
+                cursor.execute(
+                    f"""
+                    SELECT
+                        v.id,
+                        v.youtube_id,
+                        v.title,
+                        c.name as channel_name,
+                        s.content as summary,
+                        v.thumbnail_url
+                    FROM video v
+                    JOIN channel c ON v.channel_id = c.id
+                    JOIN transcript t ON v.id = t.video_id
+                    LEFT JOIN summary s ON v.id = s.video_id
+                    WHERE {where_clause}
+                    ORDER BY v.youtube_created_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (pattern, per_page, offset),
+                )
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                if "no such column" in str(e).lower():
+                    return {'videos': [], 'total': 0, 'pages': 0}
+                else:
+                    raise
+        return {
+            'videos': [dict(row) for row in rows],
+            'total': total_count,
+            'pages': (total_count + per_page - 1) // per_page,
+        }
+
     def video_exists(self, youtube_id: str) -> bool:
         """Check if a video already exists in the database."""
         with sqlite3.connect(self.db_path) as conn:
@@ -545,6 +630,27 @@ class DatabaseManager:
                 ORDER BY count DESC
             """)
             return cursor.fetchall()
+
+    def get_tag_counts(self):
+        """Return all tags with usage counts."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT tags FROM transcript WHERE tags IS NOT NULL")
+            except sqlite3.OperationalError as e:
+                if "no such column" in str(e).lower():
+                    return []
+                raise
+            rows = cursor.fetchall()
+        counts = {}
+        for row in rows:
+            if row[0]:
+                for t in row[0].split(','):
+                    t = t.strip().lower()
+                    if t:
+                        counts[t] = counts.get(t, 0) + 1
+        ordered = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        return [{"name": k, "count": v} for k, v in ordered]
 
     def get_video_quote(self, video_id):
         """Get quote for a specific video."""

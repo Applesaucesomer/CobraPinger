@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS transcript (
     id INTEGER PRIMARY KEY,
     video_id INTEGER NOT NULL,
     content TEXT NOT NULL,
+    tags TEXT DEFAULT NULL,
     FOREIGN KEY (video_id) REFERENCES video(id)
 );
 

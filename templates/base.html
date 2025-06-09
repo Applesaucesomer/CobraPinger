@@ -35,6 +35,9 @@
                     <li class="nav-item">
                         <a class="nav-link {% if active_page == 'topics' %}active{% endif %}" href="/topics">Topics</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if active_page == 'tags' %}active{% endif %}" href="/tags">Tags</a>
+                    </li>
                 </ul>
                 <form class="d-flex" action="/search" method="get">
                     <input class="form-control me-2" type="search" name="q" placeholder="Search transcripts..." aria-label="Search">
