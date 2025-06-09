@@ -13,6 +13,7 @@ import traceback
 from database import DatabaseManager
 from googleapiclient.discovery import build
 from models.AdvisorNotes import AdvisorNotes
+from vector_store import VectorStoreManager
 
 
 CONFIG_FILE = "config.json"
@@ -133,18 +134,21 @@ def generate_embedding(text, client):
         log(f"Could not generate embedding: {e}")
         return None
 
-def retrieve_context(query_text: str, db: DatabaseManager, client, top_n: int = 5) -> str:
-    """Retrieve relevant context from the database for a query."""
+def retrieve_context(query_text: str, db: DatabaseManager, client, vector_store: VectorStoreManager, top_n: int = 5) -> str:
+    """Retrieve relevant context from stored embeddings."""
     embedding = generate_embedding(query_text, client)
     if embedding is None:
         return ""
-    results = db.search_by_embedding(embedding, top_n)
+    video_ids = vector_store.query_embeddings(embedding, top_n)
     snippets = []
-    for video in results:
-        if video.get("transcript"):
-            snippets.append(video["transcript"])
-        elif video.get("summary"):
-            snippets.append(video["summary"])
+    for vid in video_ids:
+        transcript = db.get_transcript(vid)
+        if transcript:
+            snippets.append(transcript)
+        else:
+            details = db.get_video_details(vid)
+            if details and details.get("summary"):
+                snippets.append(details["summary"])
     return "\n".join(snippets)
 
 def send_discord_notification(video_url, summary, discord_webhook_url):
@@ -209,6 +213,7 @@ def generate_advisor_notes(text: str, client, context: str | None = None) -> lis
 def run_program_once(config, client):
     """Run the program once."""
     db = DatabaseManager(config['db_path'])
+    vector_store = VectorStoreManager(client, config['vector_store_id'])
     
     for youtuber in config['youtubers']:
         log(f"Checking for new videos for {youtuber['name']}...")
@@ -245,7 +250,7 @@ def run_program_once(config, client):
 
                     embedding = generate_embedding(transcript, client)
                     if embedding:
-                        db.store_embedding(db_video_id, embedding)
+                        vector_store.store_embedding(db_video_id, embedding)
 
                     # Extract and store topics
                     topics = extract_topics(transcript, client)
@@ -534,6 +539,7 @@ def load_recent_videos(config, client):
             return
             
         db = DatabaseManager(config['db_path'])
+        vector_store = VectorStoreManager(client, config['vector_store_id'])
         channel_id = db.get_or_create_channel(youtuber['channel_id'], youtuber['name'])
         
         videos_processed = 0
@@ -567,7 +573,7 @@ def load_recent_videos(config, client):
 
                 embedding = generate_embedding(transcript, client)
                 if embedding:
-                    db.store_embedding(db_video_id, embedding)
+                    vector_store.store_embedding(db_video_id, embedding)
 
                 topics = extract_topics(transcript, client)
                 topic_ids = []
@@ -599,6 +605,7 @@ def load_recent_videos(config, client):
 def reprocess_missing_transcripts(config, client):
     """Reprocess videos that are missing transcripts."""
     db = DatabaseManager(config['db_path'])
+    vector_store = VectorStoreManager(client, config['vector_store_id'])
     videos = db.get_videos_without_transcript()
     
     if not videos:
@@ -628,7 +635,7 @@ def reprocess_missing_transcripts(config, client):
 
             embedding = generate_embedding(transcript, client)
             if embedding:
-                db.store_embedding(video['id'], embedding)
+                vector_store.store_embedding(video['id'], embedding)
 
             # Extract and store topics
             topics = extract_topics(transcript, client)
@@ -660,6 +667,7 @@ def reprocess_missing_transcripts(config, client):
 def reprocess_missing_content(config, client):
     """Reprocess videos that are missing transcripts or summaries."""
     db = DatabaseManager(config['db_path'])
+    vector_store = VectorStoreManager(client, config['vector_store_id'])
     videos_no_transcript = db.get_videos_without_transcript()
     videos_no_summary = db.get_videos_without_summary()
     
@@ -690,7 +698,7 @@ def reprocess_missing_content(config, client):
 
                 embedding = generate_embedding(transcript, client)
                 if embedding:
-                    db.store_embedding(video['id'], embedding)
+                    vector_store.store_embedding(video['id'], embedding)
 
                 # Extract and store topics
                 topics = extract_topics(transcript, client)
@@ -848,8 +856,9 @@ def process_missing_advisor_notes(config, client):
 def ask_question(config, client):
     """Allow the user to ask a question about the video library."""
     db = DatabaseManager(config['db_path'])
+    vector_store = VectorStoreManager(client, config['vector_store_id'])
     question = input("Enter your question: ")
-    context = retrieve_context(question, db, client)
+    context = retrieve_context(question, db, client, vector_store)
     try:
         messages = [
             {"role": "system", "content": "You answer questions about the stored YouTube videos."},
