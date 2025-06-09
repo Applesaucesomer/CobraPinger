@@ -37,6 +37,9 @@ It first attempts the YouTube transcript API and falls back to OpenAI Whisper if
 that fails. Control the Whisper model with the `WHISPER_MODEL` environment
 variable (defaults to `base`).
 
+If the fallback fails with an error, verify `ffmpeg` is installed and that the
+YouTube URL is accessible.
+
 # Credits
 
 * Two idiots in a bear costume with a passion for food hacks.

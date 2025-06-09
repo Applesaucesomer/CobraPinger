@@ -10,6 +10,7 @@ import sys
 import select
 import re
 import traceback
+import shutil
 from database import DatabaseManager
 import numpy as np
 from embedding_index import load_index, add_embedding, find_similar, build_advisor_prompt
@@ -109,9 +110,9 @@ def fetch_via_api(video_id, retries=5, delay=2):
 def transcribe_with_whisper(video_url: str) -> str | None:
     """Download the video's audio and transcribe it using Whisper."""
     try:
+        import tempfile
         from pytube import YouTube
         import whisper
-        import tempfile
 
         yt = YouTube(video_url)
         audio_stream = yt.streams.filter(only_audio=True).first()
@@ -119,14 +120,19 @@ def transcribe_with_whisper(video_url: str) -> str | None:
             log("No audio stream found for video")
             return None
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp:
-            temp_path = temp.name
-            audio_stream.download(filename=temp_path)
+        tmpdir = tempfile.mkdtemp()
+        try:
+            file_path = audio_stream.download(output_path=tmpdir)
+        except Exception as e:
+            log(f"Failed to download audio: {e}")
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return None
 
         model_name = os.getenv("WHISPER_MODEL", "base")
         model = whisper.load_model(model_name)
-        result = model.transcribe(temp_path)
-        os.remove(temp_path)
+        result = model.transcribe(file_path)
+        os.remove(file_path)
+        shutil.rmtree(tmpdir, ignore_errors=True)
         return result.get("text", "").strip()
     except Exception as e:
         log(f"Whisper transcription failed: {e}")
