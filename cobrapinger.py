@@ -85,8 +85,8 @@ def fetch_new_video(rss_feed_url):
     log("No new video found in the RSS feed.")
     return None
 
-def fetch_transcript(video_id, retries=5, delay=2):
-    """Fetch the transcript for the given video ID."""
+def fetch_via_api(video_id, retries=5, delay=2):
+    """Fetch the transcript for the given video ID using the YouTube API."""
     log(f"Attempting to fetch the transcript for video ID: {video_id}")
     for attempt in range(1, retries + 1):
         try:
@@ -97,13 +97,53 @@ def fetch_transcript(video_id, retries=5, delay=2):
             log("Transcript could not be retrieved (subtitles may be disabled).")
             return None
         except Exception as e:
-            log(f"An error occurred while fetching the transcript for video ID {video_id}.")
-        
+            log(f"An error occurred while fetching the transcript for video ID {video_id}: {e}")
+
         if attempt < retries:
             time.sleep(delay)
 
-    print(f"Failed to fetch transcript for video {video_id} after {retries} attempts.")
+    log(f"Failed to fetch transcript for video {video_id} after {retries} attempts.")
     return None
+
+
+def transcribe_with_whisper(video_url: str) -> str | None:
+    """Download the video's audio and transcribe it using Whisper."""
+    try:
+        from pytube import YouTube
+        import whisper
+        import tempfile
+
+        yt = YouTube(video_url)
+        audio_stream = yt.streams.filter(only_audio=True).first()
+        if not audio_stream:
+            log("No audio stream found for video")
+            return None
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp:
+            temp_path = temp.name
+            audio_stream.download(filename=temp_path)
+
+        model_name = os.getenv("WHISPER_MODEL", "base")
+        model = whisper.load_model(model_name)
+        result = model.transcribe(temp_path)
+        os.remove(temp_path)
+        return result.get("text", "").strip()
+    except Exception as e:
+        log(f"Whisper transcription failed: {e}")
+        return None
+
+
+def get_transcript(video_id: str, video_url: str) -> str | None:
+    """Get transcript via API with Whisper fallback."""
+    try:
+        transcript = fetch_via_api(video_id)
+        if transcript:
+            return transcript
+    except Exception as e:
+        log(f"API transcript fetch failed: {e}")
+
+    log("Falling back to Whisper transcription...")
+    return transcribe_with_whisper(video_url)
 
 def summarize_text(text, system_prompt, client, context: str | None = None):
     """Summarize the given text using OpenAI's GPT model."""
@@ -242,7 +282,7 @@ def run_program_once(config, client):
                 )
                 
                 # Handle transcript
-                transcript = fetch_transcript(video_id)
+                transcript = get_transcript(video_id, new_video.link)
                 if transcript:
                     save_transcript_to_file(transcript, youtuber['name'], video_title, video_published)
                     db.store_transcript(db_video_id, transcript)
@@ -573,7 +613,7 @@ def load_recent_videos(config, client):
                 thumbnail_url=thumbnail_url
             )
             
-            transcript = fetch_transcript(video_id)
+            transcript = get_transcript(video_id, f"https://www.youtube.com/watch?v={video_id}")
             if transcript:
                 save_transcript_to_file(transcript, youtuber['name'], video_title, video_published)
                 db.store_transcript(db_video_id, transcript)
@@ -640,7 +680,7 @@ def reprocess_missing_transcripts(config, client):
         log(f"Processing video: {video['title']}")
         
         # Get transcript
-        transcript = fetch_transcript(video['youtube_id'])
+        transcript = get_transcript(video['youtube_id'], f"https://www.youtube.com/watch?v={video['youtube_id']}")
         if transcript:
             save_transcript_to_file(transcript, video['channel_name'], video['title'], video['youtube_created_at'])
             db.store_transcript(video['id'], transcript)
@@ -704,7 +744,7 @@ def reprocess_missing_content(config, client):
                     
             log(f"Processing video: {video['title']}")
             
-            transcript = fetch_transcript(video['youtube_id'])
+            transcript = get_transcript(video['youtube_id'], f"https://www.youtube.com/watch?v={video['youtube_id']}")
             if transcript:
                 save_transcript_to_file(transcript, video['channel_name'], video['title'], video['youtube_created_at'])
                 db.store_transcript(video['id'], transcript)
@@ -1032,7 +1072,7 @@ def load_archived_videos(config, client):
                 thumbnail_url=thumbnail_url
             )
             
-            transcript = fetch_transcript(video_id)
+            transcript = get_transcript(video_id, f"https://www.youtube.com/watch?v={video_id}")
             if transcript:
                 save_transcript_to_file(transcript, channel_name, video_title, video_date)
                 db.store_transcript(db_video_id, transcript)

@@ -1,0 +1,27 @@
+import pytest
+import cobrapinger
+
+
+def test_get_transcript_fallback_invoked(monkeypatch):
+    def mock_fetch(video_id, retries=5, delay=2):
+        raise Exception("boom")
+
+    called = {}
+
+    def mock_whisper(url):
+        called['url'] = url
+        return "hi"
+
+    monkeypatch.setattr(cobrapinger, "fetch_via_api", mock_fetch)
+    monkeypatch.setattr(cobrapinger, "transcribe_with_whisper", mock_whisper)
+
+    result = cobrapinger.get_transcript("v1", "http://youtube.com/watch?v=v1")
+    assert called['url'] == "http://youtube.com/watch?v=v1"
+    assert result == "hi"
+
+
+@pytest.mark.skip(reason="Requires network access to YouTube and Whisper model")
+def test_whisper_fallback_integration():
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"  # video with no captions
+    result = cobrapinger.get_transcript("dQw4w9WgXcQ", url)
+    assert result

@@ -7,6 +7,11 @@ CobraPinger is a totally dank command line utility for monitoring youtubers you 
 3) Posts in a discord channel with a notification and the summary.
 4) Feeds a website to visualize the information.
 
+## Dependencies
+
+Install Python requirements from `requirements.txt`. In addition, `ffmpeg` must
+be installed for Whisper transcription (e.g. `apt install ffmpeg`).
+
 That's most definitely what's up!
 
 # Running the web server
@@ -22,6 +27,13 @@ FAISS index. This powers retrieval augmented generation for the Council of
 Advisors feature. New embeddings are appended to the index whenever a video is
 processed. If the index ever gets out of sync you can rebuild it by restarting
 the application or choosing the database rebuild option from the menu.
+
+## Whisper Fallback
+
+Use the `get_transcript(video_id, video_url)` helper to retrieve transcripts.
+It first attempts the YouTube transcript API and falls back to OpenAI Whisper if
+that fails. Control the Whisper model with the `WHISPER_MODEL` environment
+variable (defaults to `base`).
 
 # Credits
 

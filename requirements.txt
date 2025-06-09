@@ -10,3 +10,6 @@ feedgen
 flask_wtf
 gunicorn
 faiss-cpu
+arduino
+git+https://github.com/openai/whisper.git
+pytube
