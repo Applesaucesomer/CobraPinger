@@ -31,6 +31,9 @@ and ask GPT for new suggestions. A MiniBatchKMeans model assigns every video to
 a cluster which maps to a small set of base tags. All generated tags are snapped
 to this approved vocabulary using embeddings.
 
+The website has a `/tags` page that lists all tags as a cloud. Selecting a tag
+shows all videos linked to it.
+
 To retrain the clustering model run `python retrain_taxonomy.py`. This will
 produce `kmeans_tags.pkl` and a draft `cluster_tags_draft.json` for manual
 editing. After curation save your mapping as `cluster_tag_map.json`.
@@ -46,6 +49,8 @@ system:
 python cobrapinger.py --build-cluster-map   # train clusters and create draft tag map
 python cobrapinger.py --retag-existing     # regenerate tags for all stored videos
 ```
+
+If your database predates the tagging system, run `python migrations/005_add_transcript_tags.py` to add the `tags` column before retagging.
 
 # Credits
 

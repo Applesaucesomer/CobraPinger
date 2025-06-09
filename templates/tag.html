@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from 'macros.html' import pagination %}
+
+{% block title %}Videos tagged "{{ tag }}" - Cobra DB{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Videos tagged "{{ tag }}"</h2>
+
+<div class="row">
+    {% for video in videos %}
+    <div class="col-md-6 mb-4">
+        <a href="/video/{{ video.id }}" class="video-card">
+            <div class="card">
+                {% if video.thumbnail_url %}
+                <img src="{{ video.thumbnail_url }}" class="card-img-top" alt="{{ video.title }}">
+                {% endif %}
+                <div class="card-body">
+                    <h5 class="card-title">{{ video.title }}</h5>
+                    <h6 class="card-subtitle mb-2 text-muted">{{ video.channel_name }}</h6>
+                    {% if video.summary %}
+                        <p class="summary-preview">{{ video.summary|truncate(200) }}</p>
+                    {% else %}
+                        <p class="summary-preview text-muted">No summary available</p>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+{{ pagination(pages, current_page, '/tag/' + tag, total=total) }}
+{% endblock %}

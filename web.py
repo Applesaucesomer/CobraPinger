@@ -174,6 +174,25 @@ def topic_cloud():
     topics = db.get_topic_counts()  # We'll create this method
     return render_template('topics.html', active_page='topics', topics=topics)
 
+@app.route('/tags')
+def tag_cloud():
+    """Show all tags in a tag cloud."""
+    tags = db.get_tag_counts()
+    return render_template('tags.html', active_page='tags', tags=tags)
+
+@app.route('/tag/<tag_name>')
+def tag_videos(tag_name):
+    page = request.args.get('page', 1, type=int)
+    result = db.get_videos_by_tag(tag_name, page=page)
+    return render_template(
+        'tag.html',
+        videos=result['videos'],
+        total=result['total'],
+        pages=result['pages'],
+        current_page=page,
+        tag=tag_name,
+    )
+
 @app.template_filter('formatdate')
 def formatdate(date_str):
     """Format ISO date string to human readable format."""
