@@ -853,25 +853,6 @@ def process_missing_advisor_notes(config, client):
             
     log("Finished processing advisor notes.")
 
-def migrate_embeddings(config, client):
-    """Upload all stored embeddings to the configured vector store."""
-    db = DatabaseManager(config['db_path'])
-    vector_store = VectorStoreManager(client, config['vector_store_id'])
-    embeddings = db.get_all_embeddings()
-    if not embeddings:
-        log("No embeddings found in the database.")
-        return
-
-    count = 0
-    for video_id, embedding in embeddings:
-        try:
-            vector_store.store_embedding(video_id, embedding)
-            count += 1
-        except Exception as e:
-            log(f"Failed to migrate embedding for video {video_id}: {e}")
-
-    log(f"Migrated {count} embeddings to vector store.")
-
 def ask_question(config, client):
     """Allow the user to ask a question about the video library."""
     db = DatabaseManager(config['db_path'])
@@ -918,8 +899,7 @@ def show_menu():
         print("12. Generate invite code")
         print("13. Generate Missing Advisor Notes")  # Add this line
         print("14. Ask a Question")
-        print("15. Migrate Embeddings")
-        print("16. Exit")
+        print("15. Exit")  # Update exit number
         choice = input("Enter your choice: ")
 
         if choice == "1":
@@ -954,9 +934,7 @@ def show_menu():
             process_missing_advisor_notes(config, client)
         elif choice == "14":
             ask_question(config, client)
-        elif choice == "15":
-            migrate_embeddings(config, client)
-        elif choice == "16":
+        elif choice == "15":  # Update exit number
             break
         else:
             print("Invalid choice. Please try again.")
@@ -965,12 +943,7 @@ if __name__ == "__main__":
     import sys
     config = load_config()
     client = OpenAI(api_key=config['openai_api_key'])
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--auto":
-            run_program_continuously(config, client)
-        elif sys.argv[1] == "--migrate-embeds":
-            migrate_embeddings(config, client)
-        else:
-            show_menu()
+    if len(sys.argv) > 1 and sys.argv[1] == "--auto":
+        run_program_continuously(config, client)
     else:
         show_menu()
