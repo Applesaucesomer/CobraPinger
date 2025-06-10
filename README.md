@@ -38,7 +38,9 @@ that fails. Control the Whisper model with the `WHISPER_MODEL` environment
 variable (defaults to `base.en`).
 
 If the fallback fails with an error, verify `ffmpeg` is installed and that the
-YouTube URL is accessible.
+YouTube URL is accessible. Errors like `HTTP Error 400` usually indicate the
+video cannot be downloaded, often due to regional restrictions or an invalid
+link.
 
 # Credits
 

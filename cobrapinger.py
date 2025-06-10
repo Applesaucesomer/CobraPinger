@@ -111,10 +111,16 @@ def transcribe_with_whisper(video_url: str) -> str | None:
     """Download the video's audio and transcribe it using Whisper."""
     try:
         import tempfile
+        from urllib.error import HTTPError
         from pytube import YouTube
         import whisper
 
-        yt = YouTube(video_url)
+        try:
+            yt = YouTube(video_url)
+        except Exception as e:
+            log(f"Failed to initialize YouTube object: {e}")
+            return None
+
         audio_stream = yt.streams.filter(only_audio=True).first()
         if not audio_stream:
             log("No audio stream found for video")
@@ -123,6 +129,10 @@ def transcribe_with_whisper(video_url: str) -> str | None:
         tmpdir = tempfile.mkdtemp()
         try:
             file_path = audio_stream.download(output_path=tmpdir)
+        except HTTPError as e:
+            log(f"HTTP error downloading audio: {e}")
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return None
         except Exception as e:
             log(f"Failed to download audio: {e}")
             shutil.rmtree(tmpdir, ignore_errors=True)
