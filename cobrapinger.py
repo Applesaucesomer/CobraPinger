@@ -110,16 +110,17 @@ def fetch_via_api(video_id, retries=5, delay=2):
 WHISPER_MODEL = None
 
 def get_whisper_model():
-    """Load the Whisper model once and return the cached instance."""
+    """Load the Whisper model once using settings from the config file."""
     global WHISPER_MODEL
     if WHISPER_MODEL is not None:
         return WHISPER_MODEL
     import whisper
-    model_path = os.getenv("WHISPER_MODEL_PATH")
+    cfg = load_config()
+    model_path = cfg.get("whisper_model_path")
     if model_path and os.path.exists(model_path):
         WHISPER_MODEL = whisper.load_model(model_path)
     else:
-        model_name = os.getenv("WHISPER_MODEL", "base.en")
+        model_name = cfg.get("whisper_model", "base.en")
         WHISPER_MODEL = whisper.load_model(model_name)
     return WHISPER_MODEL
 

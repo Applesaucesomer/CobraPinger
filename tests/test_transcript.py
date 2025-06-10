@@ -1,6 +1,7 @@
 import pytest
 import cobrapinger
 import sys
+import json
 
 
 def test_get_transcript_fallback_invoked(monkeypatch):
@@ -49,15 +50,17 @@ def test_transcribe_with_whisper_uses_model_path(monkeypatch, tmp_path):
     import types
     monkeypatch.setitem(sys.modules, "pytube", types.SimpleNamespace(YouTube=DummyYT))
     monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=lambda name: DummyModel(name)))
-    monkeypatch.setenv("WHISPER_MODEL_PATH", "/models/foo.pt")
     monkeypatch.setattr(cobrapinger.os.path, "exists", lambda p: True)
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"whisper_model_path": "/models/foo.pt"}))
+    monkeypatch.setattr(cobrapinger, "CONFIG_FILE", str(cfg))
     cobrapinger.WHISPER_MODEL = None
     res = cobrapinger.transcribe_with_whisper("http://x")
     assert called["model"] == "/models/foo.pt"
     assert res == "ok"
 
 
-def test_get_whisper_model_cached(monkeypatch):
+def test_get_whisper_model_cached(monkeypatch, tmp_path):
     called = []
 
     class DummyModel:
@@ -70,7 +73,9 @@ def test_get_whisper_model_cached(monkeypatch):
     import types
     monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=load_model))
     monkeypatch.setattr(cobrapinger.os.path, "exists", lambda p: True)
-    monkeypatch.setenv("WHISPER_MODEL_PATH", "/cache/model.pt")
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"whisper_model_path": "/cache/model.pt"}))
+    monkeypatch.setattr(cobrapinger, "CONFIG_FILE", str(cfg))
     cobrapinger.WHISPER_MODEL = None
 
     m1 = cobrapinger.get_whisper_model()

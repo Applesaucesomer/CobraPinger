@@ -34,10 +34,10 @@ the application or choosing the database rebuild option from the menu.
 
 Use the `get_transcript(video_id, video_url)` helper to retrieve transcripts.
 It first attempts the YouTube transcript API and falls back to the local
-`openai-whisper` model if that fails. Control the model with the
-`WHISPER_MODEL` environment variable (defaults to `base.en`). If you already
-have a downloaded model file, set `WHISPER_MODEL_PATH` to its location to avoid
-any online downloads.
+`openai-whisper` model if that fails. Configure the model using `config.json`
+with the keys `whisper_model` (defaults to `base.en`) and `whisper_model_path`
+if you have a pre-downloaded model file. Any provided path prevents online
+downloads.
 The Whisper model is cached on first use so subsequent transcriptions do not
 reload it.
 
