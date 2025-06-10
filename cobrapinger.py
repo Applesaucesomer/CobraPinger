@@ -145,7 +145,24 @@ def transcribe_with_whisper(video_url: str) -> str | None:
 
         tmpdir = tempfile.mkdtemp()
         try:
-            file_path = audio_stream.download(output_path=tmpdir)
+            raw_path = audio_stream.download(output_path=tmpdir)
+            mp3_path = os.path.join(tmpdir, "audio.mp3")
+            try:
+                import subprocess
+                subprocess.run([
+                    "ffmpeg",
+                    "-i",
+                    raw_path,
+                    mp3_path,
+                    "-y",
+                    "-loglevel",
+                    "error",
+                ], check=True)
+            except Exception as conv_e:
+                log(f"ffmpeg conversion failed: {conv_e}")
+                os.remove(raw_path)
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                return None
         except HTTPError as e:
             log(f"HTTP error downloading audio: {e}")
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -156,8 +173,9 @@ def transcribe_with_whisper(video_url: str) -> str | None:
             return None
 
         model = get_whisper_model()
-        result = model.transcribe(file_path)
-        os.remove(file_path)
+        result = model.transcribe(mp3_path)
+        os.remove(raw_path)
+        os.remove(mp3_path)
         shutil.rmtree(tmpdir, ignore_errors=True)
         return result.get("text", "").strip()
     except Exception as e:

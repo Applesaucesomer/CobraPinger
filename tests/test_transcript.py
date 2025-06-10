@@ -27,7 +27,7 @@ def test_transcribe_with_whisper_uses_model_path(monkeypatch, tmp_path):
 
     class DummyStream:
         def download(self, output_path):
-            p = tmp_path / "a.mp3"
+            p = tmp_path / "a.webm"
             p.write_bytes(b"0")
             return str(p)
 
@@ -47,16 +47,25 @@ def test_transcribe_with_whisper_uses_model_path(monkeypatch, tmp_path):
             called["file"] = path
             return {"text": "ok"}
 
+    def fake_run(cmd, check):
+        assert cmd[0] == "ffmpeg"
+        mp3_path = cmd[3]
+        from pathlib import Path
+        Path(mp3_path).write_bytes(b"1")
+        return 0
+
     import types
     monkeypatch.setitem(sys.modules, "pytube", types.SimpleNamespace(YouTube=DummyYT))
     monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=lambda name: DummyModel(name)))
     monkeypatch.setattr(cobrapinger.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(cobrapinger.subprocess, "run", fake_run)
     cfg = tmp_path / "cfg.json"
     cfg.write_text(json.dumps({"whisper_model_path": "/models/foo.pt"}))
     monkeypatch.setattr(cobrapinger, "CONFIG_FILE", str(cfg))
     cobrapinger.WHISPER_MODEL = None
     res = cobrapinger.transcribe_with_whisper("http://x")
     assert called["model"] == "/models/foo.pt"
+    assert called["file"].endswith(".mp3")
     assert res == "ok"
 
 

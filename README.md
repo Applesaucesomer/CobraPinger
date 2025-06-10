@@ -40,6 +40,8 @@ if you have a pre-downloaded model file. Any provided path prevents online
 downloads.
 The Whisper model is cached on first use so subsequent transcriptions do not
 reload it.
+The audio stream is downloaded with `pytube`, converted to MP3 using `ffmpeg`,
+and then transcribed so Whisper receives an MP3 file.
 
 If the fallback fails with an error, verify `ffmpeg` is installed and that the
 YouTube URL is accessible. Errors like `HTTP Error 400` usually indicate the
