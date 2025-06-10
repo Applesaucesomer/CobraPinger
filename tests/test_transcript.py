@@ -50,9 +50,34 @@ def test_transcribe_with_whisper_uses_model_path(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "pytube", types.SimpleNamespace(YouTube=DummyYT))
     monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=lambda name: DummyModel(name)))
     monkeypatch.setenv("WHISPER_MODEL_PATH", "/models/foo.pt")
+    monkeypatch.setattr(cobrapinger.os.path, "exists", lambda p: True)
+    cobrapinger.WHISPER_MODEL = None
     res = cobrapinger.transcribe_with_whisper("http://x")
     assert called["model"] == "/models/foo.pt"
     assert res == "ok"
+
+
+def test_get_whisper_model_cached(monkeypatch):
+    called = []
+
+    class DummyModel:
+        pass
+
+    def load_model(name):
+        called.append(name)
+        return DummyModel()
+
+    import types
+    monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=load_model))
+    monkeypatch.setattr(cobrapinger.os.path, "exists", lambda p: True)
+    monkeypatch.setenv("WHISPER_MODEL_PATH", "/cache/model.pt")
+    cobrapinger.WHISPER_MODEL = None
+
+    m1 = cobrapinger.get_whisper_model()
+    m2 = cobrapinger.get_whisper_model()
+
+    assert m1 is m2
+    assert called == ["/cache/model.pt"]
 
 
 @pytest.mark.skip(reason="Requires network access to YouTube and Whisper model")

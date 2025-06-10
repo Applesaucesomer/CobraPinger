@@ -38,6 +38,8 @@ It first attempts the YouTube transcript API and falls back to the local
 `WHISPER_MODEL` environment variable (defaults to `base.en`). If you already
 have a downloaded model file, set `WHISPER_MODEL_PATH` to its location to avoid
 any online downloads.
+The Whisper model is cached on first use so subsequent transcriptions do not
+reload it.
 
 If the fallback fails with an error, verify `ffmpeg` is installed and that the
 YouTube URL is accessible. Errors like `HTTP Error 400` usually indicate the

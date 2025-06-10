@@ -107,14 +107,30 @@ def fetch_via_api(video_id, retries=5, delay=2):
     return None
 
 
+WHISPER_MODEL = None
+
+def get_whisper_model():
+    """Load the Whisper model once and return the cached instance."""
+    global WHISPER_MODEL
+    if WHISPER_MODEL is not None:
+        return WHISPER_MODEL
+    import whisper
+    model_path = os.getenv("WHISPER_MODEL_PATH")
+    if model_path and os.path.exists(model_path):
+        WHISPER_MODEL = whisper.load_model(model_path)
+    else:
+        model_name = os.getenv("WHISPER_MODEL", "base.en")
+        WHISPER_MODEL = whisper.load_model(model_name)
+    return WHISPER_MODEL
+
+
 def transcribe_with_whisper(video_url: str) -> str | None:
     """Download the video's audio and transcribe it using Whisper."""
     try:
         import tempfile
         from urllib.error import HTTPError
         from pytube import YouTube
-        import whisper
-
+        
         try:
             yt = YouTube(video_url)
         except Exception as e:
@@ -138,12 +154,7 @@ def transcribe_with_whisper(video_url: str) -> str | None:
             shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
-        model_path = os.getenv("WHISPER_MODEL_PATH")
-        if model_path and os.path.exists(model_path):
-            model = whisper.load_model(model_path)
-        else:
-            model_name = os.getenv("WHISPER_MODEL", "base.en")
-            model = whisper.load_model(model_name)
+        model = get_whisper_model()
         result = model.transcribe(file_path)
         os.remove(file_path)
         shutil.rmtree(tmpdir, ignore_errors=True)
