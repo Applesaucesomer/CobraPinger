@@ -128,7 +128,7 @@ def transcribe_with_whisper(video_url: str) -> str | None:
             shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
-        model_name = os.getenv("WHISPER_MODEL", "base")
+        model_name = os.getenv("WHISPER_MODEL", "base.en")
         model = whisper.load_model(model_name)
         result = model.transcribe(file_path)
         os.remove(file_path)
