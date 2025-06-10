@@ -33,9 +33,11 @@ the application or choosing the database rebuild option from the menu.
 ## Whisper Fallback
 
 Use the `get_transcript(video_id, video_url)` helper to retrieve transcripts.
-It first attempts the YouTube transcript API and falls back to OpenAI Whisper if
-that fails. Control the Whisper model with the `WHISPER_MODEL` environment
-variable (defaults to `base.en`).
+It first attempts the YouTube transcript API and falls back to the local
+`openai-whisper` model if that fails. Control the model with the
+`WHISPER_MODEL` environment variable (defaults to `base.en`). If you already
+have a downloaded model file, set `WHISPER_MODEL_PATH` to its location to avoid
+any online downloads.
 
 If the fallback fails with an error, verify `ffmpeg` is installed and that the
 YouTube URL is accessible. Errors like `HTTP Error 400` usually indicate the

@@ -1,5 +1,6 @@
 import pytest
 import cobrapinger
+import sys
 
 
 def test_get_transcript_fallback_invoked(monkeypatch):
@@ -18,6 +19,40 @@ def test_get_transcript_fallback_invoked(monkeypatch):
     result = cobrapinger.get_transcript("v1", "http://youtube.com/watch?v=v1")
     assert called['url'] == "http://youtube.com/watch?v=v1"
     assert result == "hi"
+
+
+def test_transcribe_with_whisper_uses_model_path(monkeypatch, tmp_path):
+    called = {}
+
+    class DummyStream:
+        def download(self, output_path):
+            p = tmp_path / "a.mp3"
+            p.write_bytes(b"0")
+            return str(p)
+
+    class DummyYT:
+        def __init__(self, url):
+            pass
+
+        @property
+        def streams(self):
+            return type("S", (), {"filter": lambda self, only_audio: [DummyStream()]})()
+
+    class DummyModel:
+        def __init__(self, name):
+            called["model"] = name
+
+        def transcribe(self, path):
+            called["file"] = path
+            return {"text": "ok"}
+
+    import types
+    monkeypatch.setitem(sys.modules, "pytube", types.SimpleNamespace(YouTube=DummyYT))
+    monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=lambda name: DummyModel(name)))
+    monkeypatch.setenv("WHISPER_MODEL_PATH", "/models/foo.pt")
+    res = cobrapinger.transcribe_with_whisper("http://x")
+    assert called["model"] == "/models/foo.pt"
+    assert res == "ok"
 
 
 @pytest.mark.skip(reason="Requires network access to YouTube and Whisper model")
