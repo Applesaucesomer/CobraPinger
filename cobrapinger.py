@@ -316,7 +316,7 @@ def run_program_once(config, client):
                 else:
                     summary = "No transcript found."
 
-                video_page_url = f"http://cobra.today/video/{video_id}"
+                video_page_url = f"http://cobra.today/video/{db_video_id}"
                 send_discord_notification(new_video.link, video_page_url, summary, config['discord_webhook_url'])
 
                 last_video_data.append({
