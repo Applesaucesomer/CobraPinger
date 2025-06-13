@@ -161,16 +161,20 @@ def retrieve_context(query_text: str, db: DatabaseManager, client, top_n: int = 
             snippets.append(video["summary"])
     return "\n".join(snippets)
 
-def send_discord_notification(video_url, summary, discord_webhook_url):
+def send_discord_notification(video_url, page_url, summary, discord_webhook_url):
     #if there is no Discord webhook URL, just print the message
     if not discord_webhook_url:
         print("Discord Webhook URL not set. Summary:")
         print(summary)
         return
     
-    """Send a notification to Discord with the video URL and summary."""
+    """Send a notification to Discord with the video URLs and summary."""
     log("Sending notification to Discord...")
-    message = f"@everyone **New Video:** {video_url}\n\n**Summary:** {summary}"
+    message = (
+        f"@everyone **New Video:** {video_url}\n"
+        f"Also on cobra.today: {page_url}\n\n"
+        f"**Summary:** {summary}"
+    )
     webhook = DiscordWebhook(url=discord_webhook_url, content=message)
     response = webhook.execute()
     if response.status_code == 200:
@@ -313,7 +317,7 @@ def run_program_once(config, client):
                     summary = "No transcript found."
 
                 video_page_url = f"http://cobra.today/video/{video_id}"
-                send_discord_notification(video_page_url, summary, config['discord_webhook_url'])
+                send_discord_notification(new_video.link, video_page_url, summary, config['discord_webhook_url'])
 
                 last_video_data.append({
                     'id': video_id,
